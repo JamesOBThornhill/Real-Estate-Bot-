@@ -8,11 +8,15 @@ require('dotenv').config();
 const express = require('express');
 const WebSocket = require('ws');
 const http = require('http');
+const { Readable, PassThrough } = require('stream');
 const { createClient: createDeepgramClient } = require('@deepgram/sdk');
 const Anthropic = require('@anthropic-ai/sdk');
 const twilio = require('twilio');
 const sgMail = require('@sendgrid/mail');
 const axios = require('axios');
+const ffmpeg = require('fluent-ffmpeg');
+const ffmpegPath = require('@ffmpeg-installer/ffmpeg').path;
+ffmpeg.setFfmpegPath(ffmpegPath);
 
 const app = express();
 app.use(express.json());
@@ -339,17 +343,10 @@ wss.on('connection', (ws) => {
     const partialLead = {
       callerName: 'Unknown — requested human',
       callerPhone: session.callerPhone,
-      buyRent: 'Unknown',
-      propertyType: 'Unknown',
-      location: 'Unknown',
-      budget: 'Unknown',
-      timeline: 'Unknown',
-      preApproved: 'Unknown',
-      whoMovingIn: 'Unknown',
-      pets: 'Unknown',
-      motivation: 'Unknown',
-      exclusivity: 'Unknown',
-      score: 'Warm',
+      buyRent: 'Unknown', propertyType: 'Unknown', location: 'Unknown',
+      budget: 'Unknown', timeline: 'Unknown', preApproved: 'Unknown',
+      whoMovingIn: 'Unknown', pets: 'Unknown', motivation: 'Unknown',
+      exclusivity: 'Unknown', score: 'Warm',
       summary: `Caller requested human agent. ${session.messages.length > 2 ? `Had ${Math.floor(session.messages.length / 2)} exchanges before requesting transfer.` : 'Requested human immediately.'} Call back promptly.`,
       requestedHuman: true,
       callSid: session.callSid,
@@ -360,8 +357,7 @@ wss.on('connection', (ws) => {
 
     await speakToCall(
       'Absolutely no problem at all. I am transferring you to one of our agents right now. I have already sent your details across — so if they miss your call they will get back to you as soon as possible. Please hold.',
-      session.streamSid,
-      ws
+      session.streamSid, ws
     );
 
     await twilioClient.calls(session.callSid)
@@ -371,7 +367,7 @@ wss.on('connection', (ws) => {
     session.qualified = true;
   }
 
-  // ── ElevenLabs TTS ────────────────────────────────────────────────────────
+  // ── ElevenLabs TTS with ffmpeg conversion ─────────────────────────────────
   async function speakToCall(text, streamSid, ws) {
     isSpeaking = true;
     console.log(`🔊 Speaking: "${text.substring(0, 60)}..."`);
@@ -386,13 +382,34 @@ wss.on('connection', (ws) => {
         data: {
           text,
           model_id: 'eleven_flash_v2_5',
-          output_format: 'ulaw_8000',
+          output_format: 'pcm_24000',
           voice_settings: { stability: 0.75, similarity_boost: 0.75 },
         },
         responseType: 'arraybuffer',
       });
 
-      const audioBase64 = Buffer.from(response.data).toString('base64');
+      // Convert PCM 24000hz stereo → mulaw 8000hz mono for Twilio
+      const inputBuffer = Buffer.from(response.data);
+      const outputBuffer = await new Promise((resolve, reject) => {
+        const chunks = [];
+        const inputStream = new Readable();
+        inputStream.push(inputBuffer);
+        inputStream.push(null);
+
+        const outputStream = new PassThrough();
+        outputStream.on('data', chunk => chunks.push(chunk));
+        outputStream.on('end', () => resolve(Buffer.concat(chunks)));
+        outputStream.on('error', reject);
+
+        ffmpeg(inputStream)
+          .inputFormat('s16le')
+          .inputOptions(['-ar 24000', '-ac 1'])
+          .outputFormat('mulaw')
+          .outputOptions(['-ar 8000', '-ac 1'])
+          .pipe(outputStream);
+      });
+
+      const audioBase64 = outputBuffer.toString('base64');
 
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({
@@ -407,7 +424,7 @@ wss.on('connection', (ws) => {
         }));
       }
 
-      const durationMs = (response.data.byteLength / 8000) * 1000 + 300;
+      const durationMs = (outputBuffer.length / 8000) * 1000 + 300;
       await new Promise(r => setTimeout(r, durationMs));
     } catch (err) {
       console.error('ElevenLabs TTS error:', err.message);
