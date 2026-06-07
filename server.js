@@ -250,9 +250,9 @@ wss.on('connection', (ws) => {
         },
         data: {
           text,
-          model_id: 'eleven_turbo_v2',
-          output_format: 'pcm_8000',
-          voice_settings: { stability: 0.5, similarity_boost: 0.8, style: 0.3 },
+          model_id: 'eleven_flash_v2_5',
+output_format: 'ulaw_8000',
+voice_settings: { stability: 0.5, similarity_boost: 0.8, style: 0.0 },
         },
         responseType: 'arraybuffer',
       });
