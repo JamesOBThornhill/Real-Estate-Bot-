@@ -402,8 +402,8 @@ wss.on('connection', (ws) => {
         outputStream.on('error', reject);
 
         ffmpeg(inputStream)
-          .inputFormat('s16le')
-          .inputOptions(['-ar 24000', '-ac 2'])
+          .inputFormat('mp3')
+          .inputOptions([])
           .outputFormat('mulaw')
           .outputOptions(['-ar 8000', '-ac 1'])
           .pipe(outputStream);
