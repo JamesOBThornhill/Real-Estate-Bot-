@@ -397,16 +397,31 @@ wss.on('connection', (ws) => {
         inputStream.push(null);
 
         const outputStream = new PassThrough();
-        outputStream.on('data', chunk => chunks.push(chunk));
-        outputStream.on('end', () => resolve(Buffer.concat(chunks)));
-        outputStream.on('error', reject);
+outputStream.on('data', chunk => chunks.push(chunk));
+outputStream.on('end', () => resolve(Buffer.concat(chunks)));
+outputStream.on('error', (err) => {
+  if (chunks.length > 0) {
+    resolve(Buffer.concat(chunks));
+  } else {
+    reject(err);
+  }
+});
 
-        ffmpeg(inputStream)
-          .inputFormat('mp3')
-          .inputOptions([])
-          .outputFormat('mulaw')
-          .outputOptions(['-ar 8000', '-ac 1'])
-          .pipe(outputStream);
+const proc = ffmpeg(inputStream)
+  .inputFormat('s16le')
+  .inputOptions(['-ar 24000', '-ac 1'])
+  .outputFormat('mulaw')
+  .outputOptions(['-ar 8000', '-ac 1']);
+
+proc.on('error', (err) => {
+  if (chunks.length > 0) {
+    resolve(Buffer.concat(chunks));
+  } else {
+    reject(err);
+  }
+});
+
+proc.pipe(outputStream, { end: true });
       });
 
       const audioBase64 = outputBuffer.toString('base64');
