@@ -270,7 +270,7 @@ voice_settings: { stability: 0.5, similarity_boost: 0.8, style: 0.0 },
           }));
         }
         // Pace the audio chunks
-        await new Promise(r => setTimeout(r, 20));
+        await new Promise(r => setTimeout(r, 5));
       }
 
       // Send mark to know when audio finishes
