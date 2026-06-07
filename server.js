@@ -243,7 +243,7 @@ wss.on('connection', (ws) => {
     try {
       const response = await axios({
         method: 'post',
-        url: `https://api.elevenlabs.io/v1/text-to-speech/${process.env.ELEVENLABS_VOICE_ID}/stream`,
+        url: `https://api.elevenlabs.io/v1/text-to-speech/${process.env.ELEVENLABS_VOICE_ID}`,
         headers: {
           'xi-api-key': process.env.ELEVENLABS_API_KEY,
           'Content-Type': 'application/json',
@@ -251,8 +251,34 @@ wss.on('connection', (ws) => {
         data: {
           text,
           model_id: 'eleven_flash_v2_5',
-output_format: 'ulaw_8000',
-voice_settings: { stability: 0.5, similarity_boost: 0.8, style: 0.0 },
+          output_format: 'ulaw_8000',
+          voice_settings: { stability: 0.75, similarity_boost: 0.75 },
+        },
+        responseType: 'arraybuffer',
+      });
+
+      const audioBase64 = Buffer.from(response.data).toString('base64');
+      
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          event: 'media',
+          streamSid,
+          media: { payload: audioBase64 },
+        }));
+        ws.send(JSON.stringify({ 
+          event: 'mark', 
+          streamSid, 
+          mark: { name: 'done' } 
+        }));
+      }
+
+      const durationMs = (response.data.byteLength / 8000) * 1000 + 300;
+      await new Promise(r => setTimeout(r, durationMs));
+    } catch (err) {
+      console.error('ElevenLabs TTS error:', err.message);
+    }
+    isSpeaking = false;
+  }
         },
         responseType: 'arraybuffer',
       });
