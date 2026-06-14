@@ -232,11 +232,17 @@ Called: ${new Date(lead.timestamp).toLocaleString('en-GB')}
 
 async function notifySMS(lead) {
   if (!process.env.REP_PHONE) return;
-  await twilioClient.messages.create({
+  const msgOptions = {
     body: formatLeadText(lead),
-    from: process.env.TWILIO_PHONE_NUMBER,
     to: process.env.REP_PHONE,
-  });
+  };
+  // Use messaging service if available, otherwise fall back to direct number
+  if (process.env.TWILIO_MESSAGING_SERVICE_SID) {
+    msgOptions.messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID;
+  } else {
+    msgOptions.from = process.env.TWILIO_PHONE_NUMBER;
+  }
+  await twilioClient.messages.create(msgOptions);
 }
 
 async function notifyWhatsApp(lead) {
