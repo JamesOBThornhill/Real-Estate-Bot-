@@ -326,8 +326,10 @@ async function notifySlack(lead) {
   }] : [];
 
    console.log('Slack URL:', process.env.SLACK_WEBHOOK_URL);
+   const scoreEmoji = { Hot: '🔥', Warm: '🟡', Cold: '🔵' }[lead.score] || '⚪';
   await axios.post(process.env.SLACK_WEBHOOK_URL, {
-    blocks: [
+    text: `${scoreEmoji} *New ${enquiryLabel} Lead — ${lead.score} — ${lead.callerName}*\n*Phone:* ${lead.callerPhone}\n*Email:* ${lead.callerEmail}\n*Budget:* ${lead.budget}\n*Location:* ${lead.location}\n*Timeline:* ${lead.timeline}\n_${lead.summary}_`,
+  });
       { type: 'header', text: { type: 'plain_text', text: `${scoreEmoji} New ${enquiryLabel} Lead — ${lead.score} — ${lead.callerName}` } },
       ...humanBlock,
       { type: 'section', fields: [
