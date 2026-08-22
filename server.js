@@ -265,26 +265,50 @@ async function notifyEmail(lead) {
     ['Call Duration', lead.callDuration],
   ].filter(Boolean);
 
+  const scoreEmoji = { Hot: '🔥', Warm: '🟡', Cold: '🔵' }[lead.score] || '⚪';
+  const scoreBg = { Hot: '#c9400a', Warm: '#c99a0a', Cold: '#4a7fc9' }[lead.score] || '#666';
+  const scoreLabel = { Hot: 'HOT LEAD — ACT NOW', Warm: 'WARM LEAD', Cold: 'COLD LEAD' }[lead.score] || 'NEW LEAD';
+
   const html = `
     <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
-      <div style="background:#1a1a18;padding:24px 32px;">
-        <h2 style="color:#c9a96e;margin:0 0 8px 0;font-size:22px;font-weight:300;letter-spacing:2px;">NEW ${isRent ? 'RENTAL' : 'BUYER'} LEAD</h2>
-        <span style="background:${scoreColor};color:#fff;padding:4px 12px;font-size:12px;letter-spacing:1px;text-transform:uppercase;">${lead.score}</span>
+      
+      <!-- Score banner -->
+      <div style="background:${scoreBg};padding:20px 32px;text-align:center;">
+        <div style="font-size:32px;margin-bottom:6px;">${scoreEmoji}</div>
+        <div style="color:#fff;font-size:18px;font-weight:bold;letter-spacing:2px;">${scoreLabel}</div>
+        <div style="color:rgba(255,255,255,0.8);font-size:13px;margin-top:4px;">${isRent ? 'Rental' : 'Buyer'} Enquiry · ${new Date(lead.timestamp).toLocaleString('en-GB')}</div>
       </div>
+
+      <!-- Human callback banner -->
       ${humanBanner}
-      <div style="padding:32px;border:1px solid #eee;">
-        <table style="width:100%;border-collapse:collapse;">
-          ${rows.map(([k, v]) => `<tr><td style="padding:10px 0;border-bottom:1px solid #f0f0f0;color:#888;font-size:12px;width:140px;text-transform:uppercase;letter-spacing:1px;">${k}</td><td style="padding:10px 0;border-bottom:1px solid #f0f0f0;font-size:15px;">${v}</td></tr>`).join('')}
-        </table>
-        <div style="margin-top:24px;padding:16px;background:#f9f9f7;border-left:3px solid #c9a96e;">
-          <p style="margin:0;font-style:italic;color:#444;">${lead.summary}</p>
-        </div>
-        <div style="margin-top:24px;text-align:center;">
-          <a href="tel:${lead.callerPhone}" style="background:#1a1a18;color:#c9a96e;padding:14px 32px;text-decoration:none;font-size:13px;letter-spacing:2px;text-transform:uppercase;display:inline-block;">📞 Call Now</a>
-        </div>
+
+      <!-- Summary box -->
+      <div style="background:#f9f9f7;padding:20px 32px;border-left:4px solid ${scoreBg};">
+        <p style="margin:0;font-size:15px;color:#333;font-style:italic;line-height:1.6;">${lead.summary}</p>
       </div>
-      <div style="padding:16px 32px;background:#f9f9f7;text-align:center;font-size:11px;color:#aaa;">
-        Lead received ${new Date(lead.timestamp).toLocaleString('en-GB')} · ${process.env.AGENCY_NAME || 'Estate Agency'} AI Qualifier
+
+      <!-- Call now button -->
+      <div style="background:#fff;padding:24px 32px;text-align:center;border-bottom:1px solid #eee;">
+        <a href="tel:${lead.callerPhone}" style="background:${scoreBg};color:#fff;padding:16px 40px;text-decoration:none;font-size:15px;font-weight:bold;letter-spacing:1px;text-transform:uppercase;display:inline-block;border-radius:4px;">📞 Call ${lead.callerName} Now</a>
+        <div style="margin-top:10px;font-size:13px;color:#888;">${lead.callerPhone}</div>
+      </div>
+
+      <!-- Lead details -->
+      <div style="padding:24px 32px;border:1px solid #eee;border-top:none;">
+        <table style="width:100%;border-collapse:collapse;">
+          ${rows.map(([k, v]) => `
+            <tr>
+              <td style="padding:10px 0;border-bottom:1px solid #f0f0f0;color:#888;font-size:11px;width:130px;text-transform:uppercase;letter-spacing:1px;vertical-align:top;">${k}</td>
+              <td style="padding:10px 0;border-bottom:1px solid #f0f0f0;font-size:14px;color:#222;">${v}</td>
+            </tr>
+          `).join('')}
+        </table>
+      </div>
+
+      <!-- Footer -->
+      <div style="padding:16px 32px;background:#1a1a18;text-align:center;">
+        <div style="color:#c9a96e;font-size:13px;letter-spacing:1px;">${process.env.AGENCY_NAME || 'Estate Agency'} AI Qualifier</div>
+        <div style="color:#555;font-size:11px;margin-top:4px;">This lead was automatically qualified by AI</div>
       </div>
     </div>
   `;
