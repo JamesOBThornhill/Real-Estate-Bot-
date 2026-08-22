@@ -8,7 +8,7 @@ require('dotenv').config();
 const express = require('express');
 const crypto = require('crypto');
 const twilio = require('twilio');
-const sgMail = require('@sendgrid/mail');
+const { Resend } = require('resend');
 const axios = require('axios');
 
 const app = express();
@@ -20,7 +20,7 @@ app.use(express.urlencoded({ extended: false }));
 
 // ─── Clients ─────────────────────────────────────────────────────────────────
 const twilioClient = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
-sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 // ─── ElevenLabs Post-Call Webhook ─────────────────────────────────────────────
 app.post('/webhook', async (req, res) => {
@@ -42,6 +42,12 @@ app.post('/webhook', async (req, res) => {
 
       if (!timestamp || !sig) {
         console.error('❌ Invalid signature format');
+        return res.sendStatus(401);
+      }
+
+      const age = Math.abs(Date.now() - parseInt(timestamp));
+      if (age > 30 * 60 * 1000) {
+        console.error('❌ Webhook timestamp too old');
         return res.sendStatus(401);
       }
 
@@ -283,9 +289,9 @@ async function notifyEmail(lead) {
     </div>
   `;
 
-  await sgMail.send({
+  await resend.emails.send({
     to: process.env.REP_EMAIL,
-    from: { email: process.env.FROM_EMAIL, name: `${process.env.AGENCY_NAME || 'Agency'} AI` },
+    from: `${process.env.AGENCY_NAME || 'Agency'} AI <${process.env.FROM_EMAIL}>`,
     subject: lead.requestedHuman
       ? `⚠️ CALLBACK NEEDED: ${lead.callerPhone} — requested human agent`
       : `${lead.score === 'Hot' ? '🔥' : '🟡'} ${isRent ? 'Rental' : 'Buyer'} Lead: ${lead.callerName} — ${lead.budget}${isRent ? ' pcm' : ''} — ${lead.location}`,
