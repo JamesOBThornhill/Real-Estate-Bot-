@@ -319,6 +319,7 @@ async function notifySlack(lead) {
   if (!process.env.SLACK_WEBHOOK_URL) return;
   const scoreEmoji = { Hot: ':fire:', Warm: ':large_yellow_circle:', Cold: ':large_blue_circle:' }[lead.score] || ':white_circle:';
   const isRent = lead.buyRent === 'Rent';
+  const enquiryLabel = lead.enquiryType || lead.buyRent || 'New Enquiry';
   const humanBlock = lead.requestedHuman ? [{
     type: 'section',
     text: { type: 'mrkdwn', text: ':warning: *This caller requested a human agent — call them back promptly*' }
