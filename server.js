@@ -325,6 +325,7 @@ async function notifySlack(lead) {
     text: { type: 'mrkdwn', text: ':warning: *This caller requested a human agent — call them back promptly*' }
   }] : [];
 
+   console.log('Slack URL:', process.env.SLACK_WEBHOOK_URL);
   await axios.post(process.env.SLACK_WEBHOOK_URL, {
     blocks: [
       { type: 'header', text: { type: 'plain_text', text: `${scoreEmoji} New ${enquiryLabel} Lead — ${lead.score} — ${lead.callerName}` } },
