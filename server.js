@@ -13,12 +13,10 @@ const axios = require('axios');
 
 const app = express();
 
-// Raw body needed for webhook signature verification
 app.use('/webhook', express.raw({ type: '*/*' }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
-// ─── Clients ─────────────────────────────────────────────────────────────────
 const twilioClient = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -27,37 +25,24 @@ app.post('/webhook', async (req, res) => {
   try {
     const rawBody = req.body.toString();
 
-    // Verify HMAC signature
     const secret = process.env.ELEVENLABS_WEBHOOK_SECRET;
     if (secret) {
       const signature = req.headers['elevenlabs-signature'];
-      if (!signature) {
-        console.error('❌ Missing webhook signature');
-        return res.sendStatus(401);
-      }
+      if (!signature) return res.sendStatus(401);
 
       const parts = Object.fromEntries(signature.split(',').map(p => p.split('=')));
       const timestamp = parts['t'];
       const sig = parts['v0'];
-
-      if (!timestamp || !sig) {
-        console.error('❌ Invalid signature format');
-        return res.sendStatus(401);
-      }
+      if (!timestamp || !sig) return res.sendStatus(401);
 
       const message = `${timestamp}.${rawBody}`;
       const expected = crypto.createHmac('sha256', secret).update(message).digest('hex');
-
-      if (expected !== sig) {
-        console.error('❌ Invalid webhook signature');
-        return res.sendStatus(401);
-      }
+      if (expected !== sig) return res.sendStatus(401);
     }
 
     const event = JSON.parse(rawBody);
     console.log(`📞 Webhook received: type=${event.type}`);
 
-    // Only process post-call transcription events
     if (event.type !== 'post_call_transcription') {
       console.log(`⏭️ Skipping event type: ${event.type}`);
       return res.sendStatus(200);
@@ -67,7 +52,6 @@ app.post('/webhook', async (req, res) => {
     const transcript = data.transcript || [];
     const durationSecs = data.metadata?.call_duration_secs || 0;
 
-    // Ignore very short calls with no meaningful conversation
     if (durationSecs < 10 || transcript.length < 2) {
       console.log(`⏭️ Skipping call — too short (${durationSecs}s, ${transcript.length} turns)`);
       return res.sendStatus(200);
@@ -77,26 +61,21 @@ app.post('/webhook', async (req, res) => {
     const dataCollection = analysis.data_collection_results || {};
     const metadata = data.metadata || {};
 
-    // Extract caller phone from metadata
     const callerPhone = metadata.phone_call?.caller_id ||
                         metadata.twilio?.From ||
                         metadata.caller_id ||
                         'Unknown';
 
-    // Helper to get collected data value
     const get = (key) => dataCollection[key]?.value || 'Unknown';
 
-    // Calculate call duration
     const callDuration = `${Math.floor(durationSecs / 60)} min ${durationSecs % 60} sec`;
 
-    // Check if caller requested human from transcript
     const fullTranscript = transcript.map(t => t.message || '').join(' ').toLowerCase();
     const requestedHuman = fullTranscript.includes('speak to a human') ||
                            fullTranscript.includes('real person') ||
                            fullTranscript.includes('transfer me') ||
                            fullTranscript.includes('speak to someone');
 
-    // Derive lead score
     const budget = get('budget');
     const timeline = get('timeline');
     const isUrgent = /1 month|2 month|3 month|asap|immediately|now|week|soon/i.test(timeline);
@@ -134,7 +113,6 @@ app.post('/webhook', async (req, res) => {
 
     console.log('✅ Lead extracted:', JSON.stringify(lead, null, 2));
     await notifyAllChannels(lead);
-
     res.sendStatus(200);
   } catch (err) {
     console.error('Webhook error:', err);
@@ -146,64 +124,36 @@ app.post('/webhook', async (req, res) => {
 app.get('/test-lead', async (req, res) => {
   const type = req.query.type || 'buy';
   const testLead = type === 'rent' ? {
-    callerName: 'Test Renter',
-    callerPhone: '+447711797894',
-    callerEmail: 'test@example.com',
-    buyRent: 'Rent',
-    propertyType: '2 bed apartment',
-    location: 'Shoreditch / Bethnal Green',
-    budget: '£2,500',
-    bedrooms: '2',
-    timeline: 'End of next month',
-    preApproved: 'N/A',
-    whoMovingIn: 'Couple',
-    pets: 'No',
-    motivation: 'End of current tenancy',
-    otherAgents: 'No',
-    mustHaves: 'Parking, garden',
-    score: 'Hot',
+    callerName: 'Test Renter', callerPhone: '+447711797894', callerEmail: 'test@example.com',
+    enquiryType: 'Rent', buyRent: 'Rent', propertyType: '2 bed apartment',
+    location: 'Shoreditch / Bethnal Green', budget: '£2,500', bedrooms: '2',
+    timeline: 'End of next month', preApproved: 'N/A', whoMovingIn: 'Couple',
+    pets: 'No', motivation: 'End of current tenancy', otherAgents: 'No',
+    mustHaves: 'Parking, garden', score: 'Hot',
     summary: 'Test rental lead. Couple looking for 2 bed in East London, £2,500 pcm, moving end of next month.',
-    requestedHuman: false,
-    callDuration: '4 min 32 sec',
-    conversationId: 'TEST-RENT-' + Date.now(),
-    timestamp: new Date().toISOString(),
+    requestedHuman: false, callDuration: '4 min 32 sec',
+    conversationId: 'TEST-RENT-' + Date.now(), timestamp: new Date().toISOString(),
   } : {
-    callerName: 'Test Buyer',
-    callerPhone: '+447711797894',
-    callerEmail: 'test@example.com',
-    buyRent: 'Buy',
-    propertyType: 'House',
-    location: 'Islington / Highbury',
-    budget: '£950,000',
-    bedrooms: '3',
-    timeline: '3 months',
-    preApproved: 'Yes',
-    whoMovingIn: 'N/A',
-    pets: 'N/A',
-    motivation: 'Upsizing',
-    otherAgents: 'No',
-    mustHaves: 'Garden, parking',
-    score: 'Hot',
+    callerName: 'Test Buyer', callerPhone: '+447711797894', callerEmail: 'test@example.com',
+    enquiryType: 'Buy', buyRent: 'Buy', propertyType: 'House',
+    location: 'Islington / Highbury', budget: '£950,000', bedrooms: '3',
+    timeline: '3 months', preApproved: 'Yes', whoMovingIn: 'N/A',
+    pets: 'N/A', motivation: 'Upsizing', otherAgents: 'No',
+    mustHaves: 'Garden, parking', score: 'Hot',
     summary: 'Test buyer lead. Family upsizing, mortgage in principle, North London, budget £950k, 3 month timeline.',
-    requestedHuman: false,
-    callDuration: '5 min 12 sec',
-    conversationId: 'TEST-BUY-' + Date.now(),
-    timestamp: new Date().toISOString(),
+    requestedHuman: false, callDuration: '5 min 12 sec',
+    conversationId: 'TEST-BUY-' + Date.now(), timestamp: new Date().toISOString(),
   };
   await notifyAllChannels(testLead);
   res.json({ success: true, message: `Test ${type} lead sent`, lead: testLead });
 });
 
-// ─── Health check ─────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
 // ─── Notifications ────────────────────────────────────────────────────────────
 async function notifyAllChannels(lead) {
   console.log('📣 Sending lead notifications...');
-  const results = await Promise.allSettled([
-    notifyEmail(lead),
-    notifySlack(lead),
-  ]);
+  const results = await Promise.allSettled([notifyEmail(lead), notifySlack(lead)]);
   results.forEach((r, i) => {
     const channel = ['Email', 'Slack'][i];
     if (r.status === 'rejected') console.error(`${channel} failed:`, r.reason?.message);
@@ -216,7 +166,7 @@ function formatLeadText(lead) {
   const humanFlag = lead.requestedHuman ? '\n⚠️  REQUESTED HUMAN — CALL BACK PROMPTLY' : '';
   const isRent = lead.buyRent === 'Rent';
   return `
-${scoreEmoji} NEW ${isRent ? 'RENTAL' : 'BUYER'} LEAD — ${lead.score?.toUpperCase()}${humanFlag}
+${scoreEmoji} NEW ${lead.enquiryType?.toUpperCase() || 'ENQUIRY'} LEAD — ${lead.score?.toUpperCase()}${humanFlag}
 ━━━━━━━━━━━━━━━━━━━━
 Name:          ${lead.callerName}
 Phone:         ${lead.callerPhone}
@@ -228,9 +178,7 @@ Bedrooms:      ${lead.bedrooms}
 Location:      ${lead.location}
 Budget:        ${lead.budget}${isRent ? ' pcm' : ''}
 Timeline:      ${lead.timeline}
-${isRent
-  ? `Who moving in: ${lead.whoMovingIn}\nPets:          ${lead.pets}`
-  : `Pre-approved:  ${lead.preApproved}`}
+${isRent ? `Who moving in: ${lead.whoMovingIn}\nPets:          ${lead.pets}` : `Mortgage:      ${lead.preApproved}`}
 Motivation:    ${lead.motivation}
 Must-haves:    ${lead.mustHaves}
 Other agents:  ${lead.otherAgents}
@@ -264,7 +212,7 @@ async function notifyEmail(lead) {
     ['Location', lead.location],
     ['Budget', `${lead.budget}${isRent ? ' pcm' : ''}`],
     ['Timeline', lead.timeline],
-    isRent ? ['Who Moving In', lead.whoMovingIn] : ['Mortgage Options', lead.preApproved],
+    isRent ? ['Who Moving In', lead.whoMovingIn] : ['Mortgage', lead.preApproved],
     isRent ? ['Pets', lead.pets] : null,
     ['Motivation', lead.motivation],
     ['Must-Haves', lead.mustHaves],
@@ -317,33 +265,12 @@ async function notifyEmail(lead) {
 
 async function notifySlack(lead) {
   if (!process.env.SLACK_WEBHOOK_URL) return;
-  const scoreEmoji = { Hot: ':fire:', Warm: ':large_yellow_circle:', Cold: ':large_blue_circle:' }[lead.score] || ':white_circle:';
-  const isRent = lead.buyRent === 'Rent';
+  const scoreEmoji = { Hot: '🔥', Warm: '🟡', Cold: '🔵' }[lead.score] || '⚪';
   const enquiryLabel = lead.enquiryType || lead.buyRent || 'New Enquiry';
-  const humanBlock = lead.requestedHuman ? [{
-    type: 'section',
-    text: { type: 'mrkdwn', text: ':warning: *This caller requested a human agent — call them back promptly*' }
-  }] : [];
+  const humanFlag = lead.requestedHuman ? '\n⚠️ REQUESTED HUMAN — CALL BACK PROMPTLY' : '';
 
-   console.log('Slack URL:', process.env.SLACK_WEBHOOK_URL);
   await axios.post(process.env.SLACK_WEBHOOK_URL, {
-    text: `${scoreEmoji} *New ${enquiryLabel} Lead — ${lead.score} — ${lead.callerName}*\n*Phone:* ${lead.callerPhone}\n*Email:* ${lead.callerEmail}\n*Budget:* ${lead.budget}\n*Location:* ${lead.location}\n*Timeline:* ${lead.timeline}\n_${lead.summary}_`,
-  });
-      { type: 'header', text: { type: 'plain_text', text: `${scoreEmoji} New ${enquiryLabel} Lead — ${lead.score} — ${lead.callerName}` } },
-      ...humanBlock,
-      { type: 'section', fields: [
-        { type: 'mrkdwn', text: `*Phone*\n${lead.callerPhone}` },
-        { type: 'mrkdwn', text: `*Email*\n${lead.callerEmail}` },
-        { type: 'mrkdwn', text: `*Intent*\n${lead.buyRent}` },
-        { type: 'mrkdwn', text: `*Budget*\n${lead.budget}${isRent ? ' pcm' : ''}` },
-        { type: 'mrkdwn', text: `*Location*\n${lead.location}` },
-        { type: 'mrkdwn', text: `*Timeline*\n${lead.timeline}` },
-      ]},
-      { type: 'section', text: { type: 'mrkdwn', text: `_${lead.summary}_` } },
-      { type: 'actions', elements: [
-        { type: 'button', text: { type: 'plain_text', text: '📞 Call Now' }, style: 'primary', url: `tel:${lead.callerPhone}` },
-      ]},
-    ],
+    text: `${scoreEmoji} *New ${enquiryLabel} Lead — ${lead.score} — ${lead.callerName}*${humanFlag}\n*Phone:* ${lead.callerPhone}\n*Email:* ${lead.callerEmail}\n*Budget:* ${lead.budget}\n*Location:* ${lead.location}\n*Timeline:* ${lead.timeline}\n_${lead.summary}_`,
   });
 }
 
