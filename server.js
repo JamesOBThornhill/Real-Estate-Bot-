@@ -45,11 +45,8 @@ app.post('/webhook', async (req, res) => {
         return res.sendStatus(401);
       }
 
-      const age = Math.abs(Date.now() - parseInt(timestamp));
-      if (age > 30 * 60 * 1000) {
-        console.error('❌ Webhook timestamp too old');
-        return res.sendStatus(401);
-      }
+      
+      
 
       const message = `${timestamp}.${rawBody}`;
       const expected = crypto.createHmac('sha256', secret).update(message).digest('hex');
