@@ -45,9 +45,6 @@ app.post('/webhook', async (req, res) => {
         return res.sendStatus(401);
       }
 
-      
-      
-
       const message = `${timestamp}.${rawBody}`;
       const expected = crypto.createHmac('sha256', secret).update(message).digest('hex');
 
@@ -67,10 +64,18 @@ app.post('/webhook', async (req, res) => {
     }
 
     const data = event.data;
+    const transcript = data.transcript || [];
+    const durationSecs = data.metadata?.call_duration_secs || 0;
+
+    // Ignore very short calls with no meaningful conversation
+    if (durationSecs < 10 || transcript.length < 2) {
+      console.log(`⏭️ Skipping call — too short (${durationSecs}s, ${transcript.length} turns)`);
+      return res.sendStatus(200);
+    }
+
     const analysis = data.analysis || {};
     const dataCollection = analysis.data_collection_results || {};
     const metadata = data.metadata || {};
-    const transcript = data.transcript || [];
 
     // Extract caller phone from metadata
     const callerPhone = metadata.phone_call?.caller_id ||
@@ -82,7 +87,6 @@ app.post('/webhook', async (req, res) => {
     const get = (key) => dataCollection[key]?.value || 'Unknown';
 
     // Calculate call duration
-    const durationSecs = metadata.call_duration_secs || 0;
     const callDuration = `${Math.floor(durationSecs / 60)} min ${durationSecs % 60} sec`;
 
     // Check if caller requested human from transcript
@@ -104,7 +108,7 @@ app.post('/webhook', async (req, res) => {
     else if (hasBudget || hasTimeline) score = 'Warm';
 
     const lead = {
-      callerPhone,
+      callerPhone: get('caller_phone') !== 'Unknown' ? get('caller_phone') : callerPhone,
       callerName: get('caller_name'),
       callerEmail: get('caller_email'),
       buyRent: get('buy_rent'),
@@ -142,7 +146,7 @@ app.get('/test-lead', async (req, res) => {
   const type = req.query.type || 'buy';
   const testLead = type === 'rent' ? {
     callerName: 'Test Renter',
-    callerPhone: process.env.REP_PHONE || '+447700000000',
+    callerPhone: '+447711797894',
     callerEmail: 'test@example.com',
     buyRent: 'Rent',
     propertyType: '2 bed apartment',
@@ -164,7 +168,7 @@ app.get('/test-lead', async (req, res) => {
     timestamp: new Date().toISOString(),
   } : {
     callerName: 'Test Buyer',
-    callerPhone: process.env.REP_PHONE || '+447700000000',
+    callerPhone: '+447711797894',
     callerEmail: 'test@example.com',
     buyRent: 'Buy',
     propertyType: 'House',
@@ -238,10 +242,12 @@ Called: ${new Date(lead.timestamp).toLocaleString('en-GB')}
 
 async function notifyEmail(lead) {
   if (!process.env.REP_EMAIL) return;
-  const scoreColor = { Hot: '#c9400a', Warm: '#c99a0a', Cold: '#4a7fc9' }[lead.score] || '#666';
+  const scoreEmoji = { Hot: '🔥', Warm: '🟡', Cold: '🔵' }[lead.score] || '⚪';
+  const scoreBg = { Hot: '#c9400a', Warm: '#c99a0a', Cold: '#4a7fc9' }[lead.score] || '#666';
+  const scoreLabel = { Hot: 'HOT LEAD — ACT NOW', Warm: 'WARM LEAD', Cold: 'COLD LEAD' }[lead.score] || 'NEW LEAD';
   const isRent = lead.buyRent === 'Rent';
   const humanBanner = lead.requestedHuman
-    ? `<div style="background:#c9400a;color:#fff;padding:12px 32px;font-size:13px;letter-spacing:1px;">⚠️ THIS CALLER REQUESTED A HUMAN — CALL BACK PROMPTLY</div>`
+    ? `<div style="background:#c9400a;color:#fff;padding:12px 32px;font-size:13px;letter-spacing:1px;text-align:center;">⚠️ THIS CALLER REQUESTED A HUMAN — CALL BACK PROMPTLY</div>`
     : '';
 
   const rows = [
@@ -254,7 +260,7 @@ async function notifyEmail(lead) {
     ['Location', lead.location],
     ['Budget', `${lead.budget}${isRent ? ' pcm' : ''}`],
     ['Timeline', lead.timeline],
-    isRent ? ['Who Moving In', lead.whoMovingIn] : ['Pre-Approved', lead.preApproved],
+    isRent ? ['Who Moving In', lead.whoMovingIn] : ['Mortgage Options', lead.preApproved],
     isRent ? ['Pets', lead.pets] : null,
     ['Motivation', lead.motivation],
     ['Must-Haves', lead.mustHaves],
@@ -262,35 +268,21 @@ async function notifyEmail(lead) {
     ['Call Duration', lead.callDuration],
   ].filter(Boolean);
 
-  const scoreEmoji = { Hot: '🔥', Warm: '🟡', Cold: '🔵' }[lead.score] || '⚪';
-  const scoreBg = { Hot: '#c9400a', Warm: '#c99a0a', Cold: '#4a7fc9' }[lead.score] || '#666';
-  const scoreLabel = { Hot: 'HOT LEAD — ACT NOW', Warm: 'WARM LEAD', Cold: 'COLD LEAD' }[lead.score] || 'NEW LEAD';
-
   const html = `
     <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
-      
-      <!-- Score banner -->
       <div style="background:${scoreBg};padding:20px 32px;text-align:center;">
         <div style="font-size:32px;margin-bottom:6px;">${scoreEmoji}</div>
         <div style="color:#fff;font-size:18px;font-weight:bold;letter-spacing:2px;">${scoreLabel}</div>
         <div style="color:rgba(255,255,255,0.8);font-size:13px;margin-top:4px;">${isRent ? 'Rental' : 'Buyer'} Enquiry · ${new Date(lead.timestamp).toLocaleString('en-GB')}</div>
       </div>
-
-      <!-- Human callback banner -->
       ${humanBanner}
-
-      <!-- Summary box -->
       <div style="background:#f9f9f7;padding:20px 32px;border-left:4px solid ${scoreBg};">
         <p style="margin:0;font-size:15px;color:#333;font-style:italic;line-height:1.6;">${lead.summary}</p>
       </div>
-
-      <!-- Call now button -->
       <div style="background:#fff;padding:24px 32px;text-align:center;border-bottom:1px solid #eee;">
         <a href="tel:${lead.callerPhone}" style="background:${scoreBg};color:#fff;padding:16px 40px;text-decoration:none;font-size:15px;font-weight:bold;letter-spacing:1px;text-transform:uppercase;display:inline-block;border-radius:4px;">📞 Call ${lead.callerName} Now</a>
         <div style="margin-top:10px;font-size:13px;color:#888;">${lead.callerPhone}</div>
       </div>
-
-      <!-- Lead details -->
       <div style="padding:24px 32px;border:1px solid #eee;border-top:none;">
         <table style="width:100%;border-collapse:collapse;">
           ${rows.map(([k, v]) => `
@@ -301,8 +293,6 @@ async function notifyEmail(lead) {
           `).join('')}
         </table>
       </div>
-
-      <!-- Footer -->
       <div style="padding:16px 32px;background:#1a1a18;text-align:center;">
         <div style="color:#c9a96e;font-size:13px;letter-spacing:1px;">${process.env.AGENCY_NAME || 'Estate Agency'} AI Qualifier</div>
         <div style="color:#555;font-size:11px;margin-top:4px;">This lead was automatically qualified by AI</div>
