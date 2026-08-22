@@ -111,6 +111,7 @@ app.post('/webhook', async (req, res) => {
       callerPhone: get('caller_phone') !== 'Unknown' ? get('caller_phone') : callerPhone,
       callerName: get('caller_name'),
       callerEmail: get('caller_email'),
+      enquiryType: get('enquiry_type'),
       buyRent: get('buy_rent'),
       propertyType: get('property_type'),
       location: get('location'),
@@ -220,6 +221,7 @@ ${scoreEmoji} NEW ${isRent ? 'RENTAL' : 'BUYER'} LEAD — ${lead.score?.toUpperC
 Name:          ${lead.callerName}
 Phone:         ${lead.callerPhone}
 Email:         ${lead.callerEmail}
+Enquiry:       ${lead.enquiryType}
 Intent:        ${lead.buyRent}
 Property:      ${lead.propertyType}
 Bedrooms:      ${lead.bedrooms}
@@ -246,6 +248,7 @@ async function notifyEmail(lead) {
   const scoreBg = { Hot: '#c9400a', Warm: '#c99a0a', Cold: '#4a7fc9' }[lead.score] || '#666';
   const scoreLabel = { Hot: 'HOT LEAD — ACT NOW', Warm: 'WARM LEAD', Cold: 'COLD LEAD' }[lead.score] || 'NEW LEAD';
   const isRent = lead.buyRent === 'Rent';
+  const enquiryLabel = lead.enquiryType || lead.buyRent || 'New Enquiry';
   const humanBanner = lead.requestedHuman
     ? `<div style="background:#c9400a;color:#fff;padding:12px 32px;font-size:13px;letter-spacing:1px;text-align:center;">⚠️ THIS CALLER REQUESTED A HUMAN — CALL BACK PROMPTLY</div>`
     : '';
@@ -254,6 +257,7 @@ async function notifyEmail(lead) {
     ['Name', lead.callerName],
     ['Phone', `<a href="tel:${lead.callerPhone}" style="color:#c9400a;font-weight:bold;font-size:18px;">${lead.callerPhone}</a>`],
     ['Email', `<a href="mailto:${lead.callerEmail}">${lead.callerEmail}</a>`],
+    ['Enquiry Type', lead.enquiryType],
     ['Intent', lead.buyRent],
     ['Property Type', lead.propertyType],
     ['Bedrooms', lead.bedrooms],
@@ -273,7 +277,7 @@ async function notifyEmail(lead) {
       <div style="background:${scoreBg};padding:20px 32px;text-align:center;">
         <div style="font-size:32px;margin-bottom:6px;">${scoreEmoji}</div>
         <div style="color:#fff;font-size:18px;font-weight:bold;letter-spacing:2px;">${scoreLabel}</div>
-        <div style="color:rgba(255,255,255,0.8);font-size:13px;margin-top:4px;">${isRent ? 'Rental' : 'Buyer'} Enquiry · ${new Date(lead.timestamp).toLocaleString('en-GB')}</div>
+        <div style="color:rgba(255,255,255,0.8);font-size:13px;margin-top:4px;">${enquiryLabel} Enquiry · ${new Date(lead.timestamp).toLocaleString('en-GB')}</div>
       </div>
       ${humanBanner}
       <div style="background:#f9f9f7;padding:20px 32px;border-left:4px solid ${scoreBg};">
@@ -305,7 +309,7 @@ async function notifyEmail(lead) {
     from: `${process.env.AGENCY_NAME || 'Agency'} AI <${process.env.FROM_EMAIL}>`,
     subject: lead.requestedHuman
       ? `⚠️ CALLBACK NEEDED: ${lead.callerPhone} — requested human agent`
-      : `${lead.score === 'Hot' ? '🔥' : '🟡'} ${isRent ? 'Rental' : 'Buyer'} Lead: ${lead.callerName} — ${lead.budget}${isRent ? ' pcm' : ''} — ${lead.location}`,
+      : `${lead.score === 'Hot' ? '🔥' : '🟡'} ${enquiryLabel} Lead: ${lead.callerName} — ${lead.budget} — ${lead.location}`,
     html,
     text: formatLeadText(lead),
   });
@@ -322,7 +326,7 @@ async function notifySlack(lead) {
 
   await axios.post(process.env.SLACK_WEBHOOK_URL, {
     blocks: [
-      { type: 'header', text: { type: 'plain_text', text: `${scoreEmoji} New ${isRent ? 'Rental' : 'Buyer'} Lead — ${lead.score} — ${lead.callerName}` } },
+      { type: 'header', text: { type: 'plain_text', text: `${scoreEmoji} New ${enquiryLabel} Lead — ${lead.score} — ${lead.callerName}` } },
       ...humanBlock,
       { type: 'section', fields: [
         { type: 'mrkdwn', text: `*Phone*\n${lead.callerPhone}` },
